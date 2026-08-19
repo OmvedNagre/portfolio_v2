@@ -1,6 +1,6 @@
 import { useRef, useState, useEffect } from 'react';
 import { motion, useInView } from 'framer-motion';
-import { Server, Zap, Shield, Component, ChevronRight, Mail, Phone, MapPin, Code2, Briefcase, FileText } from 'lucide-react';
+import { Server, Zap, Shield, Component, Mail, Phone, MapPin, Code2, Briefcase, FileText } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
 const AVAILABLE_ICONS = { Zap, Server, Shield, Component };
@@ -9,7 +9,6 @@ export function AboutSection() {
   const ref = useRef(null);
   const isInView = useInView(ref, { once: true, margin: '-100px' });
   const [bio, setBio] = useState('');
-  const [settings, setSettings] = useState<any>(null);
   const [experienceStats, setExperienceStats] = useState<any[]>([]);
 
   useEffect(() => {
@@ -17,7 +16,6 @@ export function AboutSection() {
       const { data } = await supabase.from('site_settings').select('*').limit(1).single();
       if (data) {
         setBio(data.bio);
-        setSettings(data);
       }
       const { data: expData } = await supabase.from('experience').select('*').order('sort_order', { ascending: true });
       if (expData) setExperienceStats(expData);

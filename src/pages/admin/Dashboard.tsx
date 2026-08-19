@@ -2,8 +2,7 @@ import { useState } from 'react';
 import { useAuth } from '../../lib/AuthContext';
 import { Navbar } from '../../components/layout/Navbar';
 import { motion } from 'framer-motion';
-import { LayoutDashboard, LogOut, Settings, Layout, Code2, Briefcase, User as UserIcon } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { LayoutDashboard, Settings, Layout, Code2, Briefcase, User as UserIcon } from 'lucide-react';
 
 import { SettingsForm } from '../../components/admin/SettingsForm';
 import { ProjectsManager } from '../../components/admin/ProjectsManager';
@@ -13,14 +12,8 @@ import { AboutForm } from '../../components/admin/AboutForm';
 import { ExperienceManager } from '../../components/admin/ExperienceManager';
 
 export function Dashboard() {
-  const { signOut, user } = useAuth();
-  const navigate = useNavigate();
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState('settings');
-
-  const handleSignOut = async () => {
-    await signOut();
-    navigate('/admin');
-  };
 
   const tabs = [
     { id: 'settings', label: 'Site Settings', icon: Settings },
