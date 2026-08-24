@@ -93,7 +93,7 @@ export function HeroSection() {
           transition={{ duration: 0.8, delay: 0.4 }}
           className="text-5xl md:text-7xl font-display font-black tracking-tight mb-4 uppercase"
         >
-          {settings ? settings.name.split(' ')[0] : 'JOHN'} <span className="text-gradient-primary">{settings ? settings.name.split(' ').slice(1).join(' ') : 'DOE'}</span>
+          {settings ? settings.name.split(' ')[0] : 'OMVED'} <span className="text-gradient-primary">{settings ? settings.name.split(' ').slice(1).join(' ') : 'NAGRE'}</span>
         </motion.h1>
 
         {/* Role Line */}

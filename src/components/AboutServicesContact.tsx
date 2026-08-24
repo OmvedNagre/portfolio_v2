@@ -261,7 +261,7 @@ export function ContactSection() {
 
             <div className="space-y-6">
               {[
-                { icon: Mail, label: 'Email', value: settings?.email || 'hello@johndoe.com', delay: 0.5 },
+                { icon: Mail, label: 'Email', value: settings?.email || 'hello@omvednagre.com', delay: 0.5 },
                 { icon: Phone, label: 'Phone', value: settings?.phone || '+1 (555) 123-4567', delay: 0.6 },
                 { icon: MapPin, label: 'Location', value: settings?.location || 'San Francisco, CA', delay: 0.7 }
               ].map((item, i) => (
