@@ -56,11 +56,22 @@ export function ProjectsManager() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    let error = null;
+
     if (editingId) {
-      await supabase.from('projects').update(formData).eq('id', editingId);
+      const { error: updateError } = await supabase.from('projects').update(formData).eq('id', editingId);
+      error = updateError;
     } else {
-      await supabase.from('projects').insert([formData]);
+      const { error: insertError } = await supabase.from('projects').insert([formData]);
+      error = insertError;
     }
+
+    if (error) {
+      alert(`Error saving project: ${error.message}`);
+      console.error('Error saving project:', error);
+      return; // Stop here, don't close the form
+    }
+
     setIsEditing(false);
     fetchProjects();
   };

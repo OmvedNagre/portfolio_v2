@@ -32,6 +32,7 @@ CREATE TABLE projects (
   tags TEXT[] NOT NULL,
   github_url TEXT,
   live_url TEXT,
+  status TEXT DEFAULT 'Completed',
   sort_order INTEGER DEFAULT 0,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
