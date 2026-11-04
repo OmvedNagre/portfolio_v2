@@ -6,116 +6,87 @@ export function SettingsForm() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [formData, setFormData] = useState({
-    id: '',
     name: '',
     role: '',
     tagline: '',
     github_url: '',
     linkedin_url: '',
-    resume_url: '',
   });
-  const [uploadingResume, setUploadingResume] = useState(false);
-
+  const [currentResume, setCurrentResume] = useState<string | null>(null);
+  const [file, setFile] = useState<File | null>(null);
+  const [remove, setRemove] = useState(false);
+  const [loadError, setLoadError] = useState('');
   useEffect(() => {
-    fetchSettings();
+    supabase.from('site_settings').select('name,role,tagline,github_url,linkedin_url,resume_url').maybeSingle().then(({ data, error }) => {
+      if (error) setLoadError(error.message);
+      if (data) {
+        setFormData({ name: data.name, role: data.role, tagline: data.tagline, github_url: data.github_url ?? '', linkedin_url: data.linkedin_url ?? '' });
+        setCurrentResume(data.resume_url);
+      }
+      setIsLoading(false);
+    });
   }, []);
 
-  const fetchSettings = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('site_settings')
-        .select('*')
-        .limit(1)
-        .single();
-      
-      if (error) {
-        console.error('Error fetching settings:', error);
-      } else if (data) {
-        setFormData(data);
-      }
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    try {
-      if (!e.target.files || e.target.files.length === 0) return;
-      const file = e.target.files[0];
-      setUploadingResume(true);
-      
-      const fileExt = file.name.split('.').pop();
-      const fileName = `resume_${Math.random()}.${fileExt}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from('resumes')
-        .upload(fileName, file);
-
-      if (uploadError) throw uploadError;
-
-      const { data: { publicUrl } } = supabase.storage
-        .from('resumes')
-        .getPublicUrl(fileName);
-
-      setFormData({ ...formData, resume_url: publicUrl });
-      alert('Resume uploaded! Click SAVE SETTINGS to apply changes.');
-    } catch (error) {
-      console.error('Error uploading:', error);
-      alert('Failed to upload resume. Make sure you created the "resumes" bucket.');
-    } finally {
-      setUploadingResume(false);
-    }
-  };
-
-  const handleRemoveResume = async () => {
-    if (!confirm('Are you sure you want to remove the resume?')) return;
-    
-    try {
-      if (formData.resume_url) {
-        const urlParts = formData.resume_url.split('/');
-        const fileName = urlParts[urlParts.length - 1];
-        if (fileName) {
-          await supabase.storage.from('resumes').remove([fileName]);
-        }
-      }
-
-      setFormData({ ...formData, resume_url: '' });
-      if (formData.id) {
-        await supabase.from('site_settings').update({ resume_url: null }).eq('id', formData.id);
-      }
-      alert('Resume removed successfully!');
-    } catch (error) {
-      console.error('Error removing resume:', error);
-      alert('Failed to remove resume. Make sure you added the DELETE storage policy.');
-    }
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    const form = e.currentTarget;
+    const bucket = supabase.storage.from('resumes');
+    const baseUrl = bucket.getPublicUrl('').data.publicUrl;
     setIsSaving(true);
-    
     try {
-      if (formData.id) {
-        await supabase.from('site_settings').update(formData).eq('id', formData.id);
-      } else {
-        // Handle insert if no record exists yet
-        const { id, ...insertData } = formData;
-        const { data } = await supabase.from('site_settings').insert([insertData]).select().single();
-        if (data) setFormData(data);
+      let nextUrl = currentResume;
+      let uploadedPath: string | undefined;
+      if (file) {
+        if (file.size > 5242880 || await file.slice(0, 5).text() !== '%PDF-') throw new Error('Choose a PDF of up to 5 MB.');
+        uploadedPath = crypto.randomUUID() + '.pdf';
+        const upload = await bucket.upload(uploadedPath, file, { contentType: 'application/pdf' });
+        if (upload.error) throw upload.error;
+        nextUrl = bucket.getPublicUrl(uploadedPath).data.publicUrl;
+      } else if (remove) {
+        nextUrl = null;
+      }
+
+      // Only change the résumé if the link seen by this editor is still current.
+      const settings = supabase.from('site_settings');
+      const update = settings.update({ ...formData, resume_url: nextUrl }).eq('singleton', true);
+      const query = file || remove
+        ? (currentResume === null ? update.is('resume_url', null) : update.eq('resume_url', currentResume))
+        : settings.upsert({ singleton: true, ...formData }, { onConflict: 'singleton' });
+      const result = await query.select('id').single();
+      if (result.error) {
+        // A missing HTTP response leaves commit status unknown. Never delete a possibly published file.
+        if (uploadedPath && result.status >= 400 && result.status < 500 && result.status !== 408) {
+          const cleanup = await bucket.remove([uploadedPath]);
+          if (cleanup.error) throw new Error(result.error.message + ' Unused PDF cleanup failed: ' + cleanup.error.message);
+        }
+        throw result.error;
+      }
+      const oldUrl = currentResume;
+      setCurrentResume(nextUrl);
+      setFile(null);
+      setRemove(false);
+      const input = form.elements.namedItem('resume') as HTMLInputElement;
+      input.value = '';
+      if (oldUrl && oldUrl !== nextUrl && oldUrl.startsWith(baseUrl)) {
+        const cleanup = await bucket.remove([decodeURIComponent(oldUrl.slice(baseUrl.length))]);
+        if (cleanup.error) {
+          alert('Settings saved. Previous PDF cleanup failed: ' + cleanup.error.message);
+          return;
+        }
       }
       alert('Settings saved successfully!');
     } catch (error) {
-      console.error('Error saving settings:', error);
-      alert('Failed to save settings.');
+      alert('Could not complete save: ' + (error instanceof Error ? error.message : (typeof error === 'object' && error && 'message' in error ? error.message : String(error))));
     } finally {
       setIsSaving(false);
     }
   };
 
+  if (loadError) return <p role="alert">{loadError}</p>;
   if (isLoading) {
     return <div className="flex justify-center p-8"><Loader2 className="animate-spin text-primary" /></div>;
   }
@@ -124,8 +95,8 @@ export function SettingsForm() {
     <form onSubmit={handleSubmit} className="space-y-6 max-w-2xl">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="space-y-2">
-          <label className="font-mono text-xs text-muted-foreground uppercase tracking-widest">Name</label>
-          <input 
+          <label htmlFor="SettingsForm-name" className="font-mono text-xs text-muted-foreground uppercase tracking-widest">Name</label>
+          <input id="SettingsForm-name"
             type="text" 
             name="name"
             value={formData.name}
@@ -135,8 +106,8 @@ export function SettingsForm() {
           />
         </div>
         <div className="space-y-2">
-          <label className="font-mono text-xs text-muted-foreground uppercase tracking-widest">Role</label>
-          <input 
+          <label htmlFor="SettingsForm-role" className="font-mono text-xs text-muted-foreground uppercase tracking-widest">Role</label>
+          <input id="SettingsForm-role"
             type="text" 
             name="role"
             value={formData.role}
@@ -148,8 +119,8 @@ export function SettingsForm() {
       </div>
 
       <div className="space-y-2">
-        <label className="font-mono text-xs text-muted-foreground uppercase tracking-widest">Tagline</label>
-        <input 
+        <label htmlFor="SettingsForm-tagline" className="font-mono text-xs text-muted-foreground uppercase tracking-widest">Tagline</label>
+        <input id="SettingsForm-tagline"
           type="text" 
           name="tagline"
           value={formData.tagline}
@@ -163,8 +134,8 @@ export function SettingsForm() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="space-y-2">
-          <label className="font-mono text-xs text-muted-foreground uppercase tracking-widest">GitHub URL</label>
-          <input 
+          <label htmlFor="SettingsForm-github-url" className="font-mono text-xs text-muted-foreground uppercase tracking-widest">GitHub URL</label>
+          <input id="SettingsForm-github-url"
             type="url" 
             name="github_url"
             value={formData.github_url}
@@ -173,8 +144,8 @@ export function SettingsForm() {
           />
         </div>
         <div className="space-y-2">
-          <label className="font-mono text-xs text-muted-foreground uppercase tracking-widest">LinkedIn URL</label>
-          <input 
+          <label htmlFor="SettingsForm-linkedin-url" className="font-mono text-xs text-muted-foreground uppercase tracking-widest">LinkedIn URL</label>
+          <input id="SettingsForm-linkedin-url"
             type="url" 
             name="linkedin_url"
             value={formData.linkedin_url}
@@ -183,28 +154,28 @@ export function SettingsForm() {
           />
         </div>
         <div className="space-y-2 md:col-span-2 border border-border p-4 rounded-md bg-background-secondary">
-          <label className="font-mono text-xs text-muted-foreground uppercase tracking-widest flex justify-between">
-            <span>Resume (PDF)</span>
-            {formData.resume_url && (
+          <div className="font-mono text-xs text-muted-foreground uppercase tracking-widest flex justify-between">
+            <label htmlFor="resume">Resume (PDF)</label>
+            {currentResume && (
               <div className="flex gap-4">
-                <a href={formData.resume_url} target="_blank" rel="noreferrer" className="text-primary hover:underline">
+                <a href={currentResume} target="_blank" rel="noreferrer" className="text-primary hover:underline">
                   View Current
                 </a>
-                <button type="button" onClick={handleRemoveResume} className="text-red-500 hover:underline">
-                  Remove
+                <button type="button" onClick={() => { setRemove(!remove); setFile(null); }} className="text-red-500 hover:underline">
+                  {remove ? 'Undo removal' : 'Remove on save'}
                 </button>
               </div>
             )}
-          </label>
+          </div>
           <div className="flex items-center gap-4 mt-2">
             <input 
-              type="file" 
+              type="file" id="resume"
               accept=".pdf"
-              onChange={handleFileUpload}
-              disabled={uploadingResume}
+              name="resume" onChange={e => { setFile(e.target.files?.[0] ?? null); setRemove(false); }}
+              disabled={isSaving}
               className="text-white font-body text-sm file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-background hover:file:bg-primary/90 transition-colors"
             />
-            {uploadingResume && <Loader2 size={16} className="animate-spin text-primary" />}
+            {file && <span>Ready to save</span>}
           </div>
         </div>
       </div>

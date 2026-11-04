@@ -1,5 +1,5 @@
 import { Navigate, Outlet } from 'react-router-dom';
-import { useAuth } from '../../lib/AuthContext';
+import { isOwner, useAuth } from '../../lib/auth';
 
 export function ProtectedRoute() {
   const { user, isLoading } = useAuth();
@@ -12,7 +12,7 @@ export function ProtectedRoute() {
     );
   }
 
-  if (!user) {
+  if (!isOwner(user)) {
     return <Navigate to="/admin" replace />;
   }
 

@@ -7,11 +7,13 @@ import { supabase } from '../lib/supabase';
 export function SkillsSection() {
   const ref = useRef(null);
   const isInView = useInView(ref, { once: true, margin: '-50px' });
+  const [notice, setNotice] = useState("Loading skills…");
   const [skills, setSkills] = useState<any[]>([]);
 
   useEffect(() => {
     const fetchSkills = async () => {
-      const { data } = await supabase.from('skills').select('*').order('sort_order', { ascending: true });
+      const { data, error } = await supabase.from('skills').select('*').order('sort_order', { ascending: true });
+      setNotice(error ? 'Skills are temporarily unavailable.' : data?.length ? '' : 'No skills published yet.');
       if (data) setSkills(data);
     };
     fetchSkills();
@@ -34,6 +36,7 @@ export function SkillsSection() {
           </motion.div>
         </div>
 
+        <p role="status">{notice}</p>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-12 lg:gap-8">
           {skills.map((group, index) => (
             <motion.div

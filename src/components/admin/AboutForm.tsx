@@ -6,38 +6,20 @@ export function AboutForm() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [formData, setFormData] = useState({
-    id: '',
     bio: '',
     email: '',
     phone: '',
     location: '',
   });
 
+  const [readError, setReadError] = useState('');
   useEffect(() => {
-    fetchSettings();
-  }, []);
-
-  const fetchSettings = async () => {
-    try {
-      const { data } = await supabase
-        .from('site_settings')
-        .select('id, bio, email, phone, location')
-        .limit(1)
-        .single();
-      
-      if (data) {
-        setFormData({
-          id: data.id,
-          bio: data.bio || '',
-          email: data.email || '',
-          phone: data.phone || '',
-          location: data.location || ''
-        });
-      }
-    } finally {
+    supabase.from('site_settings').select('bio,email,phone,location').maybeSingle().then(({ data, error }) => {
+      if (error) setReadError(error.message);
+      if (data) setFormData({ bio: data.bio ?? '', email: data.email ?? '', phone: data.phone ?? '', location: data.location ?? '' });
       setIsLoading(false);
-    }
-  };
+    });
+  }, []);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -48,15 +30,8 @@ export function AboutForm() {
     setIsSaving(true);
     
     try {
-      if (formData.id) {
-        const { error } = await supabase.from('site_settings').update(formData).eq('id', formData.id);
-        if (error) throw error;
-      } else {
-        const { id, ...insertData } = formData;
-        const { data, error } = await supabase.from('site_settings').insert([insertData]).select().single();
-        if (error) throw error;
-        if (data) setFormData({ ...formData, id: data.id });
-      }
+      const { error } = await supabase.from('site_settings').upsert({ singleton: true, ...formData }, { onConflict: 'singleton' }).select('id').single();
+      if (error) throw error;
       alert('About details saved successfully!');
     } catch (error: any) {
       console.error('Error saving:', error);
@@ -66,6 +41,7 @@ export function AboutForm() {
     }
   };
 
+  if (readError) return <p role="alert">{readError}</p>;
   if (isLoading) {
     return <div className="flex justify-center p-8"><Loader2 className="animate-spin text-primary" /></div>;
   }
@@ -73,8 +49,8 @@ export function AboutForm() {
   return (
     <form onSubmit={handleSubmit} className="space-y-6 max-w-2xl bg-card p-6 rounded-lg border border-border">
       <div className="space-y-2">
-        <label className="font-mono text-xs text-muted-foreground uppercase tracking-widest">Driver Profile Bio (About Section)</label>
-        <textarea 
+        <label htmlFor="AboutForm-driver-profile-bio-about-section" className="font-mono text-xs text-muted-foreground uppercase tracking-widest">Driver Profile Bio (About Section)</label>
+        <textarea id="AboutForm-driver-profile-bio-about-section"
           name="bio"
           value={formData.bio}
           onChange={handleChange}
@@ -86,8 +62,8 @@ export function AboutForm() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="space-y-2">
-          <label className="font-mono text-xs text-muted-foreground uppercase tracking-widest">Email Address</label>
-          <input 
+          <label htmlFor="AboutForm-email-address" className="font-mono text-xs text-muted-foreground uppercase tracking-widest">Email Address</label>
+          <input id="AboutForm-email-address"
             type="email" 
             name="email"
             value={formData.email}
@@ -97,8 +73,8 @@ export function AboutForm() {
           />
         </div>
         <div className="space-y-2">
-          <label className="font-mono text-xs text-muted-foreground uppercase tracking-widest">Phone Number</label>
-          <input 
+          <label htmlFor="AboutForm-phone-number" className="font-mono text-xs text-muted-foreground uppercase tracking-widest">Phone Number</label>
+          <input id="AboutForm-phone-number"
             type="text" 
             name="phone"
             value={formData.phone}
@@ -108,8 +84,8 @@ export function AboutForm() {
           />
         </div>
         <div className="space-y-2 md:col-span-2">
-          <label className="font-mono text-xs text-muted-foreground uppercase tracking-widest">Location / Base of Operations</label>
-          <input 
+          <label htmlFor="AboutForm-location-base-of-operations" className="font-mono text-xs text-muted-foreground uppercase tracking-widest">Location / Base of Operations</label>
+          <input id="AboutForm-location-base-of-operations"
             type="text" 
             name="location"
             value={formData.location}

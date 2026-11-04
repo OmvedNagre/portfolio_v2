@@ -17,9 +17,16 @@ const AVAILABLE_ICONS = [
   { name: 'Component', icon: Component },
 ];
 
+function renderIcon(name: string) {
+  const Icon = AVAILABLE_ICONS.find(item => item.name === name)?.icon ?? Zap;
+  return <Icon size={20} />;
+}
+
 export function ServicesManager() {
   const [services, setServices] = useState<Service[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [readError, setReadError] = useState('');
+  const [busy, setBusy] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   
@@ -27,16 +34,18 @@ export function ServicesManager() {
     title: '', description: '', icon_name: 'Zap', sort_order: 0
   });
 
+  const [revision, setRevision] = useState(0);
+  const fetchServices = () => setRevision(value => value + 1);
   useEffect(() => {
-    fetchServices();
-  }, []);
-
-  const fetchServices = async () => {
-    setIsLoading(true);
-    const { data } = await supabase.from('services').select('*').order('sort_order', { ascending: true });
-    if (data) setServices(data);
-    setIsLoading(false);
-  };
+    let active = true;
+    supabase.from('services').select('*').order('sort_order', { ascending: true }).then(({ data, error }) => {
+      if (!active) return;
+      setReadError(error?.message ?? '');
+      if (data) setServices(data);
+      setIsLoading(false);
+    });
+    return () => { active = false; };
+  }, [revision]);
 
   const handleEdit = (service: Service) => {
     setFormData(service);
@@ -45,34 +54,34 @@ export function ServicesManager() {
   };
 
   const handleAddNew = () => {
-    setFormData({ title: '', description: '', icon_name: 'Zap', sort_order: services.length });
+    setFormData({ title: '', description: '', icon_name: 'Zap', sort_order: Math.max(-1, ...services.map(item => item.sort_order)) + 1 });
     setEditingId(null);
     setIsEditing(true);
   };
 
   const handleDelete = async (id: string) => {
     if (confirm('Are you sure you want to delete this service?')) {
-      await supabase.from('services').delete().eq('id', id);
+      setBusy(true);
+      const { error } = await supabase.from('services').delete().eq('id', id).select('id').single();
+      setBusy(false);
+      if (error) { alert(error.message); return; }
       fetchServices();
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (editingId) {
-      await supabase.from('services').update(formData).eq('id', editingId);
-    } else {
-      await supabase.from('services').insert([formData]);
-    }
+    setBusy(true);
+    const collection = supabase.from('services');
+    const query = editingId ? collection.update(formData).eq('id', editingId) : collection.insert(formData);
+    const { error } = await query.select('id').single();
+    setBusy(false);
+    if (error) { alert(error.message); return; }
     setIsEditing(false);
     fetchServices();
   };
 
-  const renderIcon = (iconName: string) => {
-    const iconObj = AVAILABLE_ICONS.find(i => i.name === iconName) || AVAILABLE_ICONS[0];
-    const Icon = iconObj.icon;
-    return <Icon size={20} />;
-  };
+  if (readError) return <p role="alert">{readError} <button onClick={fetchServices}>Retry</button></p>;
 
   if (isLoading && !isEditing) {
     return <div className="flex justify-center p-8"><Loader2 className="animate-spin text-primary" /></div>;
@@ -83,17 +92,17 @@ export function ServicesManager() {
       <form onSubmit={handleSubmit} className="space-y-4 max-w-xl bg-card p-6 rounded-lg border border-border">
         <div className="flex justify-between items-center mb-4">
           <h4 className="font-display font-bold text-lg">{editingId ? 'Edit Service' : 'New Service'}</h4>
-          <button type="button" onClick={() => setIsEditing(false)} className="text-muted-foreground hover:text-white"><X size={20}/></button>
+          <button aria-label="Close editor" type="button" onClick={() => setIsEditing(false)} className="text-muted-foreground hover:text-white"><X size={20}/></button>
         </div>
         
         <div className="space-y-2">
-          <label className="font-mono text-xs text-muted-foreground">Title</label>
-          <input type="text" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} required className="w-full bg-background border border-border rounded-md px-3 py-2 text-white font-body focus:border-primary focus:outline-none"/>
+          <label htmlFor="ServicesManager-title" className="font-mono text-xs text-muted-foreground">Title</label>
+          <input id="ServicesManager-title" type="text" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} required className="w-full bg-background border border-border rounded-md px-3 py-2 text-white font-body focus:border-primary focus:outline-none"/>
         </div>
 
         <div className="space-y-2">
-          <label className="font-mono text-xs text-muted-foreground">Description</label>
-          <textarea value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} required rows={3} className="w-full bg-background border border-border rounded-md px-3 py-2 text-white font-body focus:border-primary focus:outline-none"/>
+          <label htmlFor="ServicesManager-description" className="font-mono text-xs text-muted-foreground">Description</label>
+          <textarea id="ServicesManager-description" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} required rows={3} className="w-full bg-background border border-border rounded-md px-3 py-2 text-white font-body focus:border-primary focus:outline-none"/>
         </div>
 
         <div className="space-y-2">
@@ -116,7 +125,7 @@ export function ServicesManager() {
           </div>
         </div>
 
-        <button type="submit" className="btn-mechanical bg-primary text-background font-bold px-6 py-2 rounded-md flex items-center gap-2 mt-4">
+        <button disabled={busy} type="submit" className="btn-mechanical bg-primary text-background font-bold px-6 py-2 rounded-md flex items-center gap-2 mt-4">
           <Save size={18} /> SAVE SERVICE
         </button>
       </form>
@@ -146,11 +155,11 @@ export function ServicesManager() {
                   <p className="font-mono text-xs text-muted-foreground line-clamp-1">{service.description}</p>
                 </div>
               </div>
-              <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                <button onClick={() => handleEdit(service)} className="p-2 text-muted-foreground hover:text-white bg-background rounded-md border border-border hover:border-white transition-colors">
+              <div className="flex gap-2 md:opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 transition-opacity">
+                <button aria-label="Edit entry" onClick={() => handleEdit(service)} className="p-2 text-muted-foreground hover:text-white bg-background rounded-md border border-border hover:border-white transition-colors">
                   <Edit2 size={16} />
                 </button>
-                <button onClick={() => handleDelete(service.id)} className="p-2 text-muted-foreground hover:text-red-500 bg-background rounded-md border border-border hover:border-red-500 transition-colors">
+                <button disabled={busy} aria-label="Delete entry" onClick={() => handleDelete(service.id)} className="p-2 text-muted-foreground hover:text-red-500 bg-background rounded-md border border-border hover:border-red-500 transition-colors">
                   <Trash2 size={16} />
                 </button>
               </div>

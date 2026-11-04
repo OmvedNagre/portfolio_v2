@@ -17,6 +17,8 @@ interface Project {
 export function ProjectsManager() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [readError, setReadError] = useState('');
+  const [busy, setBusy] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   
@@ -24,16 +26,18 @@ export function ProjectsManager() {
     title: '', description: '', image_url: '', tags: [], github_url: '', live_url: '', status: 'Completed', sort_order: 0
   });
 
+  const [revision, setRevision] = useState(0);
+  const fetchProjects = () => setRevision(value => value + 1);
   useEffect(() => {
-    fetchProjects();
-  }, []);
-
-  const fetchProjects = async () => {
-    setIsLoading(true);
-    const { data } = await supabase.from('projects').select('*').order('sort_order', { ascending: true });
-    if (data) setProjects(data);
-    setIsLoading(false);
-  };
+    let active = true;
+    supabase.from('projects').select('*').order('sort_order', { ascending: true }).then(({ data, error }) => {
+      if (!active) return;
+      setReadError(error?.message ?? '');
+      if (data) setProjects(data);
+      setIsLoading(false);
+    });
+    return () => { active = false; };
+  }, [revision]);
 
   const handleEdit = (project: Project) => {
     setFormData(project);
@@ -42,39 +46,34 @@ export function ProjectsManager() {
   };
 
   const handleAddNew = () => {
-    setFormData({ title: '', description: '', image_url: '', tags: [], github_url: '', live_url: '', status: 'Completed', sort_order: projects.length });
+    setFormData({ title: '', description: '', image_url: '', tags: [], github_url: '', live_url: '', status: 'Completed', sort_order: Math.max(-1, ...projects.map(item => item.sort_order)) + 1 });
     setEditingId(null);
     setIsEditing(true);
   };
 
   const handleDelete = async (id: string) => {
     if (confirm('Are you sure you want to delete this project?')) {
-      await supabase.from('projects').delete().eq('id', id);
+      setBusy(true);
+      const { error } = await supabase.from('projects').delete().eq('id', id).select('id').single();
+      setBusy(false);
+      if (error) { alert(error.message); return; }
       fetchProjects();
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    let error = null;
-
-    if (editingId) {
-      const { error: updateError } = await supabase.from('projects').update(formData).eq('id', editingId);
-      error = updateError;
-    } else {
-      const { error: insertError } = await supabase.from('projects').insert([formData]);
-      error = insertError;
-    }
-
-    if (error) {
-      alert(`Error saving project: ${error.message}`);
-      console.error('Error saving project:', error);
-      return; // Stop here, don't close the form
-    }
-
+    setBusy(true);
+    const collection = supabase.from('projects');
+    const query = editingId ? collection.update(formData).eq('id', editingId) : collection.insert(formData);
+    const { error } = await query.select('id').single();
+    setBusy(false);
+    if (error) { alert(error.message); return; }
     setIsEditing(false);
     fetchProjects();
   };
+
+  if (readError) return <p role="alert">{readError} <button onClick={fetchProjects}>Retry</button></p>;
 
   if (isLoading && !isEditing) {
     return <div className="flex justify-center p-8"><Loader2 className="animate-spin text-primary" /></div>;
@@ -85,32 +84,32 @@ export function ProjectsManager() {
       <form onSubmit={handleSubmit} className="space-y-4 max-w-2xl bg-card p-6 rounded-lg border border-border">
         <div className="flex justify-between items-center mb-4">
           <h4 className="font-display font-bold text-lg">{editingId ? 'Edit Project' : 'New Project'}</h4>
-          <button type="button" onClick={() => setIsEditing(false)} className="text-muted-foreground hover:text-white"><X size={20}/></button>
+          <button aria-label="Close editor" type="button" onClick={() => setIsEditing(false)} className="text-muted-foreground hover:text-white"><X size={20}/></button>
         </div>
         
         <div className="space-y-2">
-          <label className="font-mono text-xs text-muted-foreground">Title</label>
-          <input type="text" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} required className="w-full bg-background border border-border rounded-md px-3 py-2 text-white font-body focus:border-primary focus:outline-none"/>
+          <label htmlFor="ProjectsManager-title" className="font-mono text-xs text-muted-foreground">Title</label>
+          <input id="ProjectsManager-title" type="text" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} required className="w-full bg-background border border-border rounded-md px-3 py-2 text-white font-body focus:border-primary focus:outline-none"/>
         </div>
         
         <div className="space-y-2">
-          <label className="font-mono text-xs text-muted-foreground">Description</label>
-          <textarea value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} required rows={3} className="w-full bg-background border border-border rounded-md px-3 py-2 text-white font-body focus:border-primary focus:outline-none"/>
+          <label htmlFor="ProjectsManager-description" className="font-mono text-xs text-muted-foreground">Description</label>
+          <textarea id="ProjectsManager-description" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} required rows={3} className="w-full bg-background border border-border rounded-md px-3 py-2 text-white font-body focus:border-primary focus:outline-none"/>
         </div>
 
         <div className="space-y-2">
-          <label className="font-mono text-xs text-muted-foreground">Image URL</label>
-          <input type="text" value={formData.image_url} onChange={e => setFormData({...formData, image_url: e.target.value})} className="w-full bg-background border border-border rounded-md px-3 py-2 text-white font-body focus:border-primary focus:outline-none"/>
+          <label htmlFor="ProjectsManager-image-url" className="font-mono text-xs text-muted-foreground">Image URL</label>
+          <input id="ProjectsManager-image-url" type="text" value={formData.image_url} onChange={e => setFormData({...formData, image_url: e.target.value})} className="w-full bg-background border border-border rounded-md px-3 py-2 text-white font-body focus:border-primary focus:outline-none"/>
         </div>
 
         <div className="space-y-2">
-          <label className="font-mono text-xs text-muted-foreground">Tags (comma separated)</label>
-          <input type="text" value={formData.tags?.join(', ')} onChange={e => setFormData({...formData, tags: e.target.value.split(',').map(t=>t.trim())})} required className="w-full bg-background border border-border rounded-md px-3 py-2 text-white font-body focus:border-primary focus:outline-none"/>
+          <label htmlFor="ProjectsManager-tags-comma-separated" className="font-mono text-xs text-muted-foreground">Tags (comma separated)</label>
+          <input id="ProjectsManager-tags-comma-separated" type="text" value={formData.tags?.join(', ')} onChange={e => setFormData({...formData, tags: e.target.value.split(',').map(t=>t.trim())})} required className="w-full bg-background border border-border rounded-md px-3 py-2 text-white font-body focus:border-primary focus:outline-none"/>
         </div>
 
         <div className="space-y-2">
-          <label className="font-mono text-xs text-muted-foreground">Project Status</label>
-          <select 
+          <label htmlFor="ProjectsManager-project-status" className="font-mono text-xs text-muted-foreground">Project Status</label>
+          <select id="ProjectsManager-project-status"
             value={formData.status} 
             onChange={e => setFormData({...formData, status: e.target.value})} 
             className="w-full bg-background border border-border rounded-md px-3 py-2 text-white font-body focus:border-primary focus:outline-none"
@@ -122,16 +121,16 @@ export function ProjectsManager() {
 
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
-            <label className="font-mono text-xs text-muted-foreground">GitHub URL</label>
-            <input type="url" value={formData.github_url} onChange={e => setFormData({...formData, github_url: e.target.value})} className="w-full bg-background border border-border rounded-md px-3 py-2 text-white font-body focus:border-primary focus:outline-none"/>
+            <label htmlFor="ProjectsManager-github-url" className="font-mono text-xs text-muted-foreground">GitHub URL</label>
+            <input id="ProjectsManager-github-url" type="url" value={formData.github_url} onChange={e => setFormData({...formData, github_url: e.target.value})} className="w-full bg-background border border-border rounded-md px-3 py-2 text-white font-body focus:border-primary focus:outline-none"/>
           </div>
           <div className="space-y-2">
-            <label className="font-mono text-xs text-muted-foreground">Live URL</label>
-            <input type="url" value={formData.live_url} onChange={e => setFormData({...formData, live_url: e.target.value})} className="w-full bg-background border border-border rounded-md px-3 py-2 text-white font-body focus:border-primary focus:outline-none"/>
+            <label htmlFor="ProjectsManager-live-url" className="font-mono text-xs text-muted-foreground">Live URL</label>
+            <input id="ProjectsManager-live-url" type="url" value={formData.live_url} onChange={e => setFormData({...formData, live_url: e.target.value})} className="w-full bg-background border border-border rounded-md px-3 py-2 text-white font-body focus:border-primary focus:outline-none"/>
           </div>
         </div>
 
-        <button type="submit" className="btn-mechanical bg-primary text-background font-bold px-6 py-2 rounded-md flex items-center gap-2 mt-4">
+        <button disabled={busy} type="submit" className="btn-mechanical bg-primary text-background font-bold px-6 py-2 rounded-md flex items-center gap-2 mt-4">
           <Save size={18} /> SAVE PROJECT
         </button>
       </form>
@@ -166,11 +165,11 @@ export function ProjectsManager() {
                   </div>
                 </div>
               </div>
-              <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                <button onClick={() => handleEdit(project)} className="p-2 text-muted-foreground hover:text-white bg-background rounded-md border border-border hover:border-white transition-colors">
+              <div className="flex gap-2 md:opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 transition-opacity">
+                <button aria-label="Edit entry" onClick={() => handleEdit(project)} className="p-2 text-muted-foreground hover:text-white bg-background rounded-md border border-border hover:border-white transition-colors">
                   <Edit2 size={16} />
                 </button>
-                <button onClick={() => handleDelete(project.id)} className="p-2 text-muted-foreground hover:text-red-500 bg-background rounded-md border border-border hover:border-red-500 transition-colors">
+                <button disabled={busy} aria-label="Delete entry" onClick={() => handleDelete(project.id)} className="p-2 text-muted-foreground hover:text-red-500 bg-background rounded-md border border-border hover:border-red-500 transition-colors">
                   <Trash2 size={16} />
                 </button>
               </div>

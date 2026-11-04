@@ -1,5 +1,6 @@
+import { Inbox } from '../../components/admin/Inbox';
 import { useState } from 'react';
-import { useAuth } from '../../lib/AuthContext';
+import { useAuth } from '../../lib/auth';
 import { Navbar } from '../../components/layout/Navbar';
 import { motion } from 'framer-motion';
 import { LayoutDashboard, Settings, Layout, Code2, Briefcase, User as UserIcon } from 'lucide-react';
@@ -21,6 +22,7 @@ export function Dashboard() {
     { id: 'skills', label: 'Skills', icon: Code2 },
     { id: 'experience', label: 'Experience', icon: UserIcon },
     { id: 'services', label: 'Services', icon: Briefcase },
+    { id: 'inbox', label: 'Inquiries', icon: Layout },
     { id: 'about', label: 'About', icon: UserIcon },
   ];
 
@@ -85,6 +87,7 @@ export function Dashboard() {
             {activeTab === 'skills' && <SkillsManager />}
             {activeTab === 'experience' && <ExperienceManager />}
             {activeTab === 'services' && <ServicesManager />}
+            {activeTab === 'inbox' && <Inbox />}
             {activeTab === 'about' && <AboutForm />}
 
           </motion.div>

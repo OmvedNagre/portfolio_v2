@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Menu, X, Shield, LogOut } from 'lucide-react';
-import { useAuth } from '../../lib/AuthContext';
+import { useAuth } from '../../lib/auth';
 
 const navLinks = [
   { name: 'Garage', path: '#hero' },
@@ -20,12 +20,12 @@ export function Navbar() {
   const { user, signOut } = useAuth();
 
   const handleLogout = async () => {
-    // Navigate to home FIRST to unmount the ProtectedRoute
-    navigate('/');
-    // Clear session immediately after
-    setTimeout(async () => {
+    try {
       await signOut();
-    }, 50);
+      navigate('/');
+    } catch {
+      alert('Sign out failed. Please try again.');
+    }
   };
 
   useEffect(() => {
@@ -88,7 +88,7 @@ export function Navbar() {
           {isAdminRoute && user && (
             <div className="flex items-center">
               <button
-                onClick={handleLogout}
+                aria-label="Sign out" onClick={handleLogout}
                 className="btn-mechanical flex items-center gap-2 bg-transparent border border-red-500/50 text-red-500 hover:bg-red-500 hover:text-white px-4 py-2 rounded-md transition-all duration-300 font-mono text-xs tracking-widest uppercase hover:shadow-[0_0_15px_rgba(239,68,68,0.5)]"
               >
                 <LogOut size={16} />
@@ -101,7 +101,7 @@ export function Navbar() {
           {!isAdminRoute && (
             <div className="md:hidden flex items-center">
               <button
-                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                aria-label="Navigation menu" aria-expanded={mobileMenuOpen} onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
                 className="text-muted-foreground hover:text-primary transition-colors duration-300 focus:outline-none"
               >
                 {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}

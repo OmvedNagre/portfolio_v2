@@ -1,3 +1,4 @@
+import type { Profile } from '../lib/profile';
 import { useRef, useState, useEffect } from 'react';
 import { motion, useInView } from 'framer-motion';
 import { Server, Zap, Shield, Component, Mail, Phone, MapPin, Code2, Briefcase, FileText } from 'lucide-react';
@@ -5,19 +6,17 @@ import { supabase } from '../lib/supabase';
 
 const AVAILABLE_ICONS = { Zap, Server, Shield, Component };
 
-export function AboutSection() {
+export function AboutSection({ settings }: { settings: Profile | null }) {
   const ref = useRef(null);
   const isInView = useInView(ref, { once: true, margin: '-100px' });
-  const [bio, setBio] = useState('');
+  const bio = settings?.bio;
+  const [experienceError, setExperienceError] = useState('');
   const [experienceStats, setExperienceStats] = useState<any[]>([]);
 
   useEffect(() => {
     const fetchSettings = async () => {
-      const { data } = await supabase.from('site_settings').select('*').limit(1).single();
-      if (data) {
-        setBio(data.bio);
-      }
-      const { data: expData } = await supabase.from('experience').select('*').order('sort_order', { ascending: true });
+      const { data: expData, error } = await supabase.from('experience').select('*').order('sort_order', { ascending: true });
+      if (error) setExperienceError('Experience details are temporarily unavailable.');
       if (expData) setExperienceStats(expData);
     };
     fetchSettings();
@@ -49,7 +48,7 @@ export function AboutSection() {
             className="space-y-6 text-muted-foreground font-body text-lg"
           >
             <p className="text-muted-foreground font-body leading-relaxed mb-6">
-              {bio || 'I build digital engines. My focus is on the intersection of blistering performance, robust architecture, and precision aesthetics. Every millisecond counts, and every pixel matters.'}
+              {bio || 'Biography coming soon.'}
             </p>
           </motion.div>
 
@@ -60,33 +59,13 @@ export function AboutSection() {
             transition={{ duration: 0.6, delay: 0.4 }}
             className="grid grid-cols-2 gap-4"
           >
-            {experienceStats.length > 0 ? (
-              experienceStats.map((stat, i) => (
+            {experienceError && <p role="status">{experienceError}</p>}
+            {experienceStats.map((stat, i) => (
                 <div key={stat.id || i} className="card-metallic p-6 border-border text-center">
                   <span className="block font-mono text-3xl font-bold text-primary mb-2">{stat.value}</span>
                   <span className="font-mono text-xs text-muted-foreground uppercase tracking-widest">{stat.label}</span>
                 </div>
-              ))
-            ) : (
-              <>
-                <div className="card-metallic p-6 border-border text-center">
-                  <span className="block font-mono text-3xl font-bold text-primary mb-2">5+</span>
-                  <span className="font-mono text-xs text-muted-foreground uppercase tracking-widest">Years Exp</span>
-                </div>
-                <div className="card-metallic p-6 border-border text-center">
-                  <span className="block font-mono text-3xl font-bold text-primary mb-2">30+</span>
-                  <span className="font-mono text-xs text-muted-foreground uppercase tracking-widest">Projects</span>
-                </div>
-                <div className="card-metallic p-6 border-border text-center">
-                  <span className="block font-mono text-3xl font-bold text-primary mb-2">60</span>
-                  <span className="font-mono text-xs text-muted-foreground uppercase tracking-widest">FPS UI</span>
-                </div>
-                <div className="card-metallic p-6 border-border text-center">
-                  <span className="block font-mono text-3xl font-bold text-primary mb-2">99%</span>
-                  <span className="font-mono text-xs text-muted-foreground uppercase tracking-widest">Uptime</span>
-                </div>
-              </>
-            )}
+              ))}
           </motion.div>
         </div>
       </div>
@@ -97,11 +76,13 @@ export function AboutSection() {
 export function ServicesSection() {
   const ref = useRef(null);
   const isInView = useInView(ref, { once: true, margin: '-100px' });
+  const [notice, setNotice] = useState("Loading services…");
   const [services, setServices] = useState<any[]>([]);
 
   useEffect(() => {
     const fetchServices = async () => {
-      const { data } = await supabase.from('services').select('*').order('sort_order', { ascending: true });
+      const { data, error } = await supabase.from('services').select('*').order('sort_order', { ascending: true });
+      setNotice(error ? 'Services are temporarily unavailable.' : data?.length ? '' : 'No services published yet.');
       if (data) setServices(data);
     };
     fetchServices();
@@ -124,6 +105,7 @@ export function ServicesSection() {
           </motion.div>
         </div>
 
+        <p role="status">{notice}</p>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           {services.map((service, index) => {
             const IconComponent = AVAILABLE_ICONS[service.icon_name as keyof typeof AVAILABLE_ICONS] || Zap;
@@ -153,24 +135,31 @@ export function ServicesSection() {
   );
 }
 
-export function ContactSection() {
+export function ContactSection({ settings }: { settings: Profile | null }) {
   const ref = useRef(null);
   const isInView = useInView(ref, { once: true, margin: '-100px' });
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [settings, setSettings] = useState<any>(null);
-
-  useEffect(() => {
-    const fetchSettings = async () => {
-      const { data } = await supabase.from('site_settings').select('*').limit(1).single();
-      if (data) setSettings(data);
-    };
-    fetchSettings();
-  }, []);
-
-  const handleSubmit = (e: React.FormEvent) => {
+  const [feedback, setFeedback] = useState('');
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    const form = e.currentTarget;
+    const fields = new FormData(form);
     setIsSubmitting(true);
-    setTimeout(() => setIsSubmitting(false), 2000);
+    setFeedback('');
+    try {
+      const { error } = await supabase.from('inquiries').insert({
+        name: String(fields.get('name')).trim(),
+        email: String(fields.get('email')).trim(),
+        message: String(fields.get('message')).trim(),
+      });
+      if (error) throw error;
+      form.reset();
+      setFeedback('Your message was received. Thank you for getting in touch.');
+    } catch {
+      setFeedback('Your message could not be sent. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -201,8 +190,8 @@ export function ContactSection() {
           >
             <form onSubmit={handleSubmit} className="space-y-6">
               <div className="space-y-2">
-                <label className="font-mono text-xs text-muted-foreground uppercase tracking-widest">Transmit To:</label>
-                <input 
+                <label htmlFor="contact-name" className="font-mono text-xs text-muted-foreground uppercase tracking-widest">Name</label>
+                <input id="contact-name" name="name" maxLength={120}
                   type="text" 
                   placeholder="Your Name" 
                   required
@@ -210,8 +199,8 @@ export function ContactSection() {
                 />
               </div>
               <div className="space-y-2">
-                <label className="font-mono text-xs text-muted-foreground uppercase tracking-widest">Return Frequency (Email):</label>
-                <input 
+                <label htmlFor="contact-email" className="font-mono text-xs text-muted-foreground uppercase tracking-widest">Email</label>
+                <input id="contact-email" name="email" maxLength={254}
                   type="email" 
                   placeholder="name@domain.com" 
                   required
@@ -219,8 +208,8 @@ export function ContactSection() {
                 />
               </div>
               <div className="space-y-2">
-                <label className="font-mono text-xs text-muted-foreground uppercase tracking-widest">Payload Data:</label>
-                <textarea 
+                <label htmlFor="contact-message" className="font-mono text-xs text-muted-foreground uppercase tracking-widest">Message</label>
+                <textarea id="contact-message" name="message" maxLength={5000}
                   rows={4}
                   placeholder="Your message..." 
                   required
@@ -241,6 +230,7 @@ export function ContactSection() {
                   'INITIATE TRANSMISSION'
                 )}
               </button>
+              <p role="status">{feedback}</p>
             </form>
           </motion.div>
 
@@ -261,9 +251,9 @@ export function ContactSection() {
 
             <div className="space-y-6">
               {[
-                { icon: Mail, label: 'Email', value: settings?.email || 'hello@omvednagre.com', delay: 0.5 },
-                { icon: Phone, label: 'Phone', value: settings?.phone || '+1 (555) 123-4567', delay: 0.6 },
-                { icon: MapPin, label: 'Location', value: settings?.location || 'San Francisco, CA', delay: 0.7 }
+                { icon: Mail, label: 'Email', value: settings?.email, delay: 0.5 },
+                { icon: Phone, label: 'Phone', value: settings?.phone, delay: 0.6 },
+                { icon: MapPin, label: 'Location', value: settings?.location, delay: 0.7 }
               ].map((item, i) => (
                 item.value && (
                   <motion.div 
@@ -292,17 +282,17 @@ export function ContactSection() {
               className="flex gap-4 pt-4 border-t border-border"
             >
               {settings?.github_url && (
-                <a href={settings.github_url} target="_blank" rel="noreferrer" className="p-3 bg-background-secondary border border-border rounded-lg hover:border-primary hover:text-primary transition-all duration-300">
+                <a aria-label="GitHub" href={settings.github_url} target="_blank" rel="noreferrer" className="p-3 bg-background-secondary border border-border rounded-lg hover:border-primary hover:text-primary transition-all duration-300">
                   <Code2 size={20} />
                 </a>
               )}
               {settings?.linkedin_url && (
-                <a href={settings.linkedin_url} target="_blank" rel="noreferrer" className="p-3 bg-background-secondary border border-border rounded-lg hover:border-[#0A66C2] hover:text-[#0A66C2] transition-all duration-300">
+                <a aria-label="LinkedIn" href={settings.linkedin_url} target="_blank" rel="noreferrer" className="p-3 bg-background-secondary border border-border rounded-lg hover:border-[#0A66C2] hover:text-[#0A66C2] transition-all duration-300">
                   <Briefcase size={20} />
                 </a>
               )}
               {settings?.resume_url && (
-                <a href={settings.resume_url} target="_blank" rel="noreferrer" download title="Download Resume" className="p-3 bg-background-secondary border border-border rounded-lg hover:border-primary hover:text-primary transition-all duration-300">
+                <a aria-label="Résumé" href={settings.resume_url} target="_blank" rel="noreferrer" download title="Download Resume" className="p-3 bg-background-secondary border border-border rounded-lg hover:border-primary hover:text-primary transition-all duration-300">
                   <FileText size={20} />
                 </a>
               )}

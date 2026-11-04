@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../../lib/supabase';
 import { Shield, ShieldAlert, ArrowLeft } from 'lucide-react';
 import { useNavigate, Link } from 'react-router-dom';
-import { useAuth } from '../../lib/AuthContext';
+import { isOwner, useAuth } from '../../lib/auth';
 
 export function Login() {
   const [email, setEmail] = useState('');
@@ -14,7 +14,7 @@ export function Login() {
   const { user } = useAuth();
 
   useEffect(() => {
-    if (user) {
+    if (isOwner(user)) {
       navigate('/admin/dashboard');
     }
   }, [user, navigate]);
@@ -24,7 +24,7 @@ export function Login() {
     setIsLoading(true);
     setError('');
 
-    const { error } = await supabase.auth.signInWithPassword({
+    const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
@@ -35,10 +35,11 @@ export function Login() {
       return;
     }
 
-    // Check for MFA requirement
-    // In a fully robust implementation, we would check data.session?.user?.factors
-    // and trigger MFA challenge if required.
-    
+    if (!isOwner(data.user)) {
+      setError('This account does not have portfolio owner access.');
+      setIsLoading(false);
+      return;
+    }
     navigate('/admin/dashboard');
   };
 
@@ -77,8 +78,8 @@ export function Login() {
 
           <form onSubmit={handleLogin} className="space-y-6">
             <div className="space-y-2">
-              <label className="font-mono text-xs text-muted-foreground uppercase tracking-widest">Operator ID</label>
-              <input 
+              <label htmlFor="Login-operator-id" className="font-mono text-xs text-muted-foreground uppercase tracking-widest">Operator ID</label>
+              <input id="Login-operator-id"
                 type="email" 
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -87,8 +88,8 @@ export function Login() {
               />
             </div>
             <div className="space-y-2">
-              <label className="font-mono text-xs text-muted-foreground uppercase tracking-widest">Access Key</label>
-              <input 
+              <label htmlFor="Login-access-key" className="font-mono text-xs text-muted-foreground uppercase tracking-widest">Access Key</label>
+              <input id="Login-access-key"
                 type="password" 
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}

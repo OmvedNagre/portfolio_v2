@@ -1,18 +1,11 @@
+import type { Profile } from '../lib/profile';
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { ChevronDown, Code2, Briefcase, FileText } from 'lucide-react';
-import { supabase } from '../lib/supabase';
 
-export function HeroSection() {
+export function HeroSection({ settings }: { settings: Profile | null }) {
   const [isIgnited, setIsIgnited] = useState(false);
-  const [settings, setSettings] = useState<any>(null);
-
   useEffect(() => {
-    const fetchSettings = async () => {
-      const { data } = await supabase.from('site_settings').select('*').limit(1).single();
-      if (data) setSettings(data);
-    };
-    fetchSettings();
 
     const t = setTimeout(() => setIsIgnited(true), 500);
     return () => clearTimeout(t);
@@ -38,40 +31,6 @@ export function HeroSection() {
           background: 'radial-gradient(circle at center, hsl(var(--primary)) 0%, transparent 60%)',
         }}
       />
-
-      {/* Left HUD Telemetry */}
-      <motion.div
-        initial={{ opacity: 0, x: -20 }}
-        animate={{ opacity: isIgnited ? 0.5 : 0, x: isIgnited ? 0 : -20 }}
-        transition={{ duration: 0.8, delay: 1.5 }}
-        className="hidden lg:flex absolute left-8 top-1/2 -translate-y-1/2 flex-col gap-6 font-mono text-xs text-muted-foreground z-10"
-      >
-        <div className="flex flex-col gap-1">
-          <span className="text-primary border-b border-primary/30 pb-1 w-24">SYS_STATUS</span>
-          <span>ONLINE</span>
-        </div>
-        <div className="flex flex-col gap-1">
-          <span className="text-primary border-b border-primary/30 pb-1 w-24">CORE_TEMP</span>
-          <span>OPTIMAL</span>
-        </div>
-      </motion.div>
-
-      {/* Right HUD Telemetry */}
-      <motion.div
-        initial={{ opacity: 0, x: 20 }}
-        animate={{ opacity: isIgnited ? 0.5 : 0, x: isIgnited ? 0 : 20 }}
-        transition={{ duration: 0.8, delay: 1.5 }}
-        className="hidden lg:flex absolute right-8 top-1/2 -translate-y-1/2 flex-col gap-6 font-mono text-xs text-muted-foreground text-right z-10 items-end"
-      >
-        <div className="flex flex-col gap-1 items-end">
-          <span className="text-primary border-b border-primary/30 pb-1 w-24 text-right">UPTIME</span>
-          <span>99.99%</span>
-        </div>
-        <div className="flex flex-col gap-1 items-end">
-          <span className="text-primary border-b border-primary/30 pb-1 w-24 text-right">BUILD</span>
-          <span>v1.0.0</span>
-        </div>
-      </motion.div>
 
       <div className="relative z-10 max-w-4xl mx-auto px-4 flex flex-col items-center text-center">
         
@@ -145,17 +104,17 @@ export function HeroSection() {
           className="flex gap-6"
         >
           {settings?.github_url && (
-            <a href={settings.github_url} target="_blank" rel="noreferrer" className="text-muted-foreground hover:text-primary transition-colors">
+            <a aria-label="GitHub" href={settings.github_url} target="_blank" rel="noreferrer" className="text-muted-foreground hover:text-primary transition-colors">
               <Code2 size={24} />
             </a>
           )}
           {settings?.linkedin_url && (
-            <a href={settings.linkedin_url} target="_blank" rel="noreferrer" className="text-muted-foreground hover:text-primary transition-colors">
+            <a aria-label="LinkedIn" href={settings.linkedin_url} target="_blank" rel="noreferrer" className="text-muted-foreground hover:text-primary transition-colors">
               <Briefcase size={24} />
             </a>
           )}
           {settings?.resume_url && (
-            <a href={settings.resume_url} target="_blank" rel="noreferrer" download className="text-muted-foreground hover:text-primary transition-colors" title="Download Resume">
+            <a aria-label="Résumé" href={settings.resume_url} target="_blank" rel="noreferrer" download className="text-muted-foreground hover:text-primary transition-colors" title="Download Resume">
               <FileText size={24} />
             </a>
           )}
@@ -163,7 +122,7 @@ export function HeroSection() {
       </div>
 
       {/* Scroll Down Indicator */}
-      <motion.div
+      <motion.button
         initial={{ opacity: 0 }}
         animate={{ opacity: isIgnited ? 1 : 0 }}
         transition={{ duration: 0.6, delay: 1.5 }}
@@ -177,7 +136,7 @@ export function HeroSection() {
         >
           <ChevronDown className="text-primary" size={20} />
         </motion.div>
-      </motion.div>
+      </motion.button>
     </section>
   );
 }

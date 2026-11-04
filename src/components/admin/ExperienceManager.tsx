@@ -12,6 +12,8 @@ interface ExperienceStat {
 export function ExperienceManager() {
   const [stats, setStats] = useState<ExperienceStat[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [readError, setReadError] = useState('');
+  const [busy, setBusy] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   
@@ -19,16 +21,18 @@ export function ExperienceManager() {
     value: '', label: '', sort_order: 0
   });
 
+  const [revision, setRevision] = useState(0);
+  const fetchStats = () => setRevision(value => value + 1);
   useEffect(() => {
-    fetchStats();
-  }, []);
-
-  const fetchStats = async () => {
-    setIsLoading(true);
-    const { data } = await supabase.from('experience').select('*').order('sort_order', { ascending: true });
-    if (data) setStats(data);
-    setIsLoading(false);
-  };
+    let active = true;
+    supabase.from('experience').select('*').order('sort_order', { ascending: true }).then(({ data, error }) => {
+      if (!active) return;
+      setReadError(error?.message ?? '');
+      if (data) setStats(data);
+      setIsLoading(false);
+    });
+    return () => { active = false; };
+  }, [revision]);
 
   const handleEdit = (stat: ExperienceStat) => {
     setFormData(stat);
@@ -37,28 +41,34 @@ export function ExperienceManager() {
   };
 
   const handleAddNew = () => {
-    setFormData({ value: '', label: '', sort_order: stats.length });
+    setFormData({ value: '', label: '', sort_order: Math.max(-1, ...stats.map(item => item.sort_order)) + 1 });
     setEditingId(null);
     setIsEditing(true);
   };
 
   const handleDelete = async (id: string) => {
     if (confirm('Are you sure you want to delete this stat?')) {
-      await supabase.from('experience').delete().eq('id', id);
+      setBusy(true);
+      const { error } = await supabase.from('experience').delete().eq('id', id).select('id').single();
+      setBusy(false);
+      if (error) { alert(error.message); return; }
       fetchStats();
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (editingId) {
-      await supabase.from('experience').update(formData).eq('id', editingId);
-    } else {
-      await supabase.from('experience').insert([formData]);
-    }
+    setBusy(true);
+    const collection = supabase.from('experience');
+    const query = editingId ? collection.update(formData).eq('id', editingId) : collection.insert(formData);
+    const { error } = await query.select('id').single();
+    setBusy(false);
+    if (error) { alert(error.message); return; }
     setIsEditing(false);
     fetchStats();
   };
+
+  if (readError) return <p role="alert">{readError} <button onClick={fetchStats}>Retry</button></p>;
 
   if (isLoading && !isEditing) {
     return <div className="flex justify-center p-8"><Loader2 className="animate-spin text-primary" /></div>;
@@ -69,13 +79,13 @@ export function ExperienceManager() {
       <form onSubmit={handleSubmit} className="space-y-4 max-w-xl bg-card p-6 rounded-lg border border-border">
         <div className="flex justify-between items-center mb-4">
           <h4 className="font-display font-bold text-lg">{editingId ? 'Edit Stat' : 'New Stat'}</h4>
-          <button type="button" onClick={() => setIsEditing(false)} className="text-muted-foreground hover:text-white"><X size={20}/></button>
+          <button aria-label="Close editor" type="button" onClick={() => setIsEditing(false)} className="text-muted-foreground hover:text-white"><X size={20}/></button>
         </div>
         
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
-            <label className="font-mono text-xs text-muted-foreground uppercase tracking-widest">Value (e.g. 5+)</label>
-            <input 
+            <label htmlFor="ExperienceManager-value-e-g-5" className="font-mono text-xs text-muted-foreground uppercase tracking-widest">Value (e.g. 5+)</label>
+            <input id="ExperienceManager-value-e-g-5"
               type="text" 
               value={formData.value} 
               onChange={e => setFormData({...formData, value: e.target.value})} 
@@ -84,8 +94,8 @@ export function ExperienceManager() {
             />
           </div>
           <div className="space-y-2">
-            <label className="font-mono text-xs text-muted-foreground uppercase tracking-widest">Label (e.g. Years Exp)</label>
-            <input 
+            <label htmlFor="ExperienceManager-label-e-g-years-exp" className="font-mono text-xs text-muted-foreground uppercase tracking-widest">Label (e.g. Years Exp)</label>
+            <input id="ExperienceManager-label-e-g-years-exp"
               type="text" 
               value={formData.label} 
               onChange={e => setFormData({...formData, label: e.target.value})} 
@@ -95,7 +105,7 @@ export function ExperienceManager() {
           </div>
         </div>
 
-        <button type="submit" className="btn-mechanical bg-primary text-background font-bold px-6 py-2 rounded-md flex items-center gap-2 mt-4">
+        <button disabled={busy} type="submit" className="btn-mechanical bg-primary text-background font-bold px-6 py-2 rounded-md flex items-center gap-2 mt-4">
           <Save size={18} /> SAVE STAT
         </button>
       </form>
@@ -119,11 +129,11 @@ export function ExperienceManager() {
               <span className="block font-mono text-3xl font-bold text-primary mb-2">{stat.value}</span>
               <span className="font-mono text-xs text-muted-foreground uppercase tracking-widest">{stat.label}</span>
               
-              <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                <button onClick={() => handleEdit(stat)} className="p-1.5 text-muted-foreground hover:text-white bg-background rounded-md border border-border hover:border-white transition-colors">
+              <div className="absolute top-2 right-2 flex gap-1 md:opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 transition-opacity">
+                <button aria-label="Edit entry" onClick={() => handleEdit(stat)} className="p-1.5 text-muted-foreground hover:text-white bg-background rounded-md border border-border hover:border-white transition-colors">
                   <Edit2 size={12} />
                 </button>
-                <button onClick={() => handleDelete(stat.id)} className="p-1.5 text-muted-foreground hover:text-red-500 bg-background rounded-md border border-border hover:border-red-500 transition-colors">
+                <button disabled={busy} aria-label="Delete entry" onClick={() => handleDelete(stat.id)} className="p-1.5 text-muted-foreground hover:text-red-500 bg-background rounded-md border border-border hover:border-red-500 transition-colors">
                   <Trash2 size={12} />
                 </button>
               </div>
